@@ -1,0 +1,53 @@
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+import re
+
+def crawl_website(base_url, max_pages=100, output_file="visited_urls.txt", error_file="error_urls.txt"):
+    visited_urls = set()  # Vermeidet doppelte Besuche
+    urls_to_visit = [base_url]
+    page_count = 0
+
+    # Regex-Muster für URLs mit "cid.[Zahl].htm"
+    url_pattern = re.compile(r"cid\.\d+\.htm")
+
+    # Dateien für Ergebnisse und Fehler öffnen
+    with open(output_file, "w") as success_file, open(error_file, "w") as fail_file:
+        while urls_to_visit and page_count < max_pages:
+            current_url = urls_to_visit.pop(0)  # Nächste URL aus der Liste holen
+
+            if current_url in visited_urls:
+                continue  # Überspringe, wenn bereits besucht
+            
+            try:
+                response = requests.get(current_url, timeout=30)
+                if response.status_code == 200:
+                    print(f"Besuche: {current_url}")
+                    visited_urls.add(current_url)
+                    page_count += 1
+                    
+                    # Dokumentiere die erfolgreiche URL
+                    success_file.write(current_url + "\n")
+                    
+                    # Finde weitere Links auf der Seite
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    for link in soup.find_all('a', href=True):
+                        absolute_url = urljoin(base_url, link['href'])
+                        
+                        # Nur URLs mit passendem Muster hinzufügen
+                        if url_pattern.search(absolute_url) and absolute_url not in visited_urls:
+                            urls_to_visit.append(absolute_url)
+                else:
+                    # Status-Codes außerhalb von 200-299 als Fehler behandeln
+                    print(f"Fehler bei {current_url}: HTTP {response.status_code}")
+                    fail_file.write(f"{current_url} - HTTP {response.status_code}\n")
+            except Exception as e:
+                print(f"Fehler bei {current_url}: {e}")
+                fail_file.write(f"{current_url} - {e}\n")
+
+    print(f"Crawl abgeschlossen. {len(visited_urls)} Seiten besucht.")
+    print(f"Erfolgreiche Seiten wurden in '{output_file}' gespeichert.")
+    print(f"Fehlerhafte Seiten wurden in '{error_file}' gespeichert.")
+
+# Beispiel-Aufruf
+crawl_website("https://online.webseite", max_pages=500)
